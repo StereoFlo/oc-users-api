@@ -1,15 +1,16 @@
-<?php namespace Stereoflo\Userapi\Controllers;
+<?php
+namespace Stereoflo\Userapi\Controllers;
 
-use ApplicationException;
-use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Schema;
 use Lang;
 use Mail;
+use Schema;
+use Validator;
+use ValidationException;
+use ApplicationException;
+use RainLab\User\Models\User as UserModel;
 use RainLab\User\Facades\Auth;
 use RainLab\User\Models\Settings as UserSettings;
-use RainLab\User\Models\User as UserModel;
-use ValidationException;
-use Validator;
+use Illuminate\Routing\Controller;
 
 /**
  * Front Controller
@@ -17,17 +18,38 @@ use Validator;
 class FrontController extends Controller
 {
 
+    /**
+     * @var bool
+     */
+    private $hasError = false;
+    /**
+     * @var string
+     */
+    private $message = '';
+
+    /**
+     * FrontController constructor.
+     */
     public function __construct()
     {
-        if (!Schema::hasTable('users')) {
-            throw new \Exception(Lang::get('stereoflo.userapi::lang.errors.general_error'));
+        try {
+            if (Schema::hasTable('users')) {
+                $this->message = Lang::get('stereoflo.userapi::lang.messages.api_running');
+            }
+        } catch (\Exception $exception) {
+            $this->hasError = true;
+            $this->message = Lang::get('stereoflo.userapi::lang.messages.api_fail');
         }
+
     }
 
+    /**
+     * @return array
+     */
     public function login()
     {
         if (Auth::check()) {
-            return ['error' => Lang::get('stereoflo.userapi::lang.messages.logged')];
+            return $this->returnMessage(Lang::get('stereoflo.userapi::lang.messages.logged'), true);
         }
         try {
             $data = post();
@@ -51,12 +73,12 @@ class FrontController extends Controller
             ];
 
             Auth::authenticate($credentials, true);
-            return [
+            return $this->returnMessage([
                 'isLogged' => Auth::check(),
                 'user' => Auth::getUser()
-            ];
+            ]);
         } catch (\Exception $exception) {
-            return ['error' => $exception->getMessage()];
+            return $this->returnMessage($exception->getMessage(), true);
         }
     }
 
@@ -68,9 +90,9 @@ class FrontController extends Controller
     public function logout()
     {
         Auth::logout();
-        return [
+        return $this->returnMessage([
             'isLogged' => Auth::check()
-        ];
+        ]);
     }
 
     /**
@@ -102,9 +124,13 @@ class FrontController extends Controller
             'code' => $code
         ];
 
-        return Mail::send('rainlab.user::mail.restore', $data, function ($message) use ($user) {
+        $sended = (bool)Mail::send('rainlab.user::mail.restore', $data, function ($message) use ($user) {
             $message->to($user->email, $user->full_name);
         });
+
+        return $this->returnMessage([
+            'isSended' => $sended
+        ], $sended);
     }
 
     /**
@@ -142,11 +168,12 @@ class FrontController extends Controller
             $user = Auth::register($data, true);
             Auth::login($user);
 
-            return ['isLogged' => Auth::check(), 'user' => Auth::getUser()];
+            return $this->returnMessage([
+                'isLogged' => Auth::check(),
+                'user' => Auth::getUser()
+            ]);
         } catch (\Exception $ex) {
-            return [
-                'error' => $ex->getMessage(),
-            ];
+            return $this->returnMessage($ex->getMessage(), true);
         }
     }
 
@@ -168,14 +195,12 @@ class FrontController extends Controller
                 Auth::login($user->reload(), true);
             }
 
-            return [
+            return $this->returnMessage([
                 'isLogged' => Auth::check(),
                 'user' => Auth::getUser()
-            ];
+            ]);
         } catch (\Exception $exception) {
-            return [
-                'error' => $exception->getMessage()
-            ];
+            return $this->returnMessage($exception->getMessage(), true);
         }
     }
 
@@ -185,8 +210,25 @@ class FrontController extends Controller
      */
     public function stub()
     {
+        return $this->returnMessage($this->message, $this->hasError);
+    }
+
+    /**
+     * @param mixed $message
+     * @param bool $isError
+     * @return array
+     */
+    private function returnMessage($message, $isError = false)
+    {
+        if (is_array($message)) {
+            return [
+                'error' => $isError,
+                'message' => null
+            ] + $message;
+        }
         return [
-            'status' => Lang::get('stereoflo.userapi::lang.messages.api_running')
+            'error' => $isError,
+            'message' => $message,
         ];
     }
 }

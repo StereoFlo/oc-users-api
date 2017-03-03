@@ -7,6 +7,7 @@ return [
     ],
     'messages' => [
         'api_running' => 'api работает!',
+        'api_fail'    => 'api временно не доступно',
         'logged'      => 'Пользователь уже вошел!'
     ]
 ];
